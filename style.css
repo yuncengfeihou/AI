@@ -1,0 +1,23 @@
+/* public/extensions/third-party/my-ai-tool-plugin/style.css */
+
+/* 示例：给AI回复区域添加一个边框 */
+#my_ai_tool_response_output {
+    border: 1px solid var(--input-border-color);
+    padding: 8px;
+    min-height: 50px; /* 确保即使为空也有一定高度 */
+    white-space: pre-wrap; /* 保留换行和空格 */
+    word-wrap: break-word; /* 长单词换行 */
+    /* 更多样式 */
+}
+
+/* 示例：调整标签和输入框的对齐 */
+.inline-drawer-content .flex-container .inline-label {
+    flex-shrink: 0; /* 防止标签被压缩 */
+    width: 80px; /* 给标签一个固定宽度 */
+    text-align: right;
+    margin-right: 5px;
+}
+
+.inline-drawer-content .flex-container input[type="text"] {
+    flex-grow: 1; /* 输入框占据剩余空间 */
+}
