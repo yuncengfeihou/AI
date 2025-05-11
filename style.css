@@ -1,23 +1,30 @@
-/* public/extensions/third-party/my-ai-tool-plugin/style.css */
-
-/* 示例：给AI回复区域添加一个边框 */
-#my_ai_tool_response_output {
+/* public/extensions/third-party/my-advanced-ai-caller/style.css */
+#adv_ai_response_output {
     border: 1px solid var(--input-border-color);
-    padding: 8px;
-    min-height: 50px; /* 确保即使为空也有一定高度 */
-    white-space: pre-wrap; /* 保留换行和空格 */
-    word-wrap: break-word; /* 长单词换行 */
-    /* 更多样式 */
+    padding: 10px;
+    margin-top: 5px;
+    min-height: 80px;
+    background-color: var(--background-color);
+    border-radius: 5px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
-/* 示例：调整标签和输入框的对齐 */
 .inline-drawer-content .flex-container .inline-label {
-    flex-shrink: 0; /* 防止标签被压缩 */
-    width: 80px; /* 给标签一个固定宽度 */
+    flex-shrink: 0;
+    width: 180px; /* 调整以适应 "使用SillyTavern当前API" */
     text-align: right;
-    margin-right: 5px;
+    margin-right: 8px;
 }
 
-.inline-drawer-content .flex-container input[type="text"] {
-    flex-grow: 1; /* 输入框占据剩余空间 */
+.inline-drawer-content .flex-container input[type="text"],
+.inline-drawer-content .flex-container input[type="password"],
+.inline-drawer-content .flex-container select {
+    flex-grow: 1;
+}
+
+#adv_ai_custom_api_config_area h4 {
+    margin-top: 10px;
+    margin-bottom: 8px;
+    color: var(--text-color);
 }
