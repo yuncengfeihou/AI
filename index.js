@@ -4,7 +4,7 @@
 // 确保从正确的相对路径导入 getContext 和 renderExtensionTemplateAsync
 import { getContext } from '../../../st-context.js'; // 从 st-context.js 导入 getContext
 import { renderExtensionTemplateAsync, extension_settings } from '../../../extensions.js';
-import { saveSettingsDebounced } from '../../../../script.js'; // 从 script.js 导入 saveSettingsDebounced
+import { saveSettingsDebounced } from '../../../script.js'; // 从 script.js 导入 saveSettingsDebounced
 
 // 插件文件夹名称，务必与 manifest.json 中的名称以及实际文件夹名一致！
 const extensionName = "AI";
