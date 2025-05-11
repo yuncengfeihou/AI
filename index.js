@@ -1,4 +1,4 @@
-// public/extensions/third-party/my-advanced-ai-caller/index.js
+// public/extensions/third-party/AI/index.js
 
 import { getContext } from '../../../../scripts/st-context.js';
 import { renderExtensionTemplateAsync, extension_settings } from '../../../../scripts/extensions.js';
@@ -42,21 +42,21 @@ function toggleCustomApiConfigArea(selectedMode) {
     }
 }
 
-$('#adv_ai_api_mode').on('change', function() {
-    pluginSettings.apiMode = $(this).val();
-    toggleCustomApiConfigArea(pluginSettings.apiMode);
-    savePluginSettings();
-});
+// $('#adv_ai_api_mode').on('change', function() { // Moved to jQuery ready
+//     pluginSettings.apiMode = $(this).val();
+//     toggleCustomApiConfigArea(pluginSettings.apiMode);
+//     savePluginSettings();
+// });
 
-$('#adv_ai_custom_api_url').on('input', function() {
-    pluginSettings.customApiUrl = $(this).val().trim();
-    savePluginSettings();
-});
+// $('#adv_ai_custom_api_url').on('input', function() { // Moved to jQuery ready
+//     pluginSettings.customApiUrl = $(this).val().trim();
+//     savePluginSettings();
+// });
 
-$('#adv_ai_custom_api_key').on('input', function() {
-    pluginSettings.customApiKey = $(this).val(); // 一般不trim密码
-    savePluginSettings();
-});
+// $('#adv_ai_custom_api_key').on('input', function() { // Moved to jQuery ready
+//     pluginSettings.customApiKey = $(this).val();
+//     savePluginSettings();
+// });
 
 
 async function handleGenerate() {
@@ -81,13 +81,16 @@ async function handleGenerate() {
 
     try {
         if (pluginSettings.apiMode === "st_current_api") {
-            console.log(`${extensionName}: Using SillyTavern's current API to generate.`);
-            // 使用 context.generateQuietPrompt 来调用SillyTavern当前配置的API
-            // quietToLoud = true (我们想要一个明确的回复)
-            // skipWIAN = true (通常对于独立调用，我们不希望注入世界信息或作者笔记)
-            // quietName = null (使用默认或让ST处理)
-            // responseLength = null (使用ST的当前设置)
-            generatedText = await context.generateQuietPrompt(prompt, true, true, null, null, null, null);
+            console.log(`${extensionName}: Using SillyTavern's current API to generate with raw prompt.`);
+            // 使用 context.generateRaw 来发送原始提示词
+            // prompt: 用户的输入
+            // api: null (或 context.mainApi) 表示使用SillyTavern当前配置的API
+            // instructOverride: true - 强制不使用当前ST的instruct模式封装，直接发送prompt
+            // quietToLoud: true - 确保我们得到一个直接的回复，而不是静默的背景行为
+            // systemPrompt: null - 不附加任何系统提示
+            // responseLength: null - 使用ST的当前设置
+            // trimNames: true - 通常是个好选择
+            generatedText = await context.generateRaw(prompt, null, true, true, null, null, true);
 
             if (!generatedText && context.onlineStatus === 'no_connection') {
                  apiError = "SillyTavern当前API未连接或生成失败。";
@@ -101,25 +104,30 @@ async function handleGenerate() {
 
             if (!customApiUrl) {
                 toastr.error("请先配置自定义API URL。", "自定义API URL缺失");
-                apiError = "自定义API URL未配置。"; // 设置错误以便finally块不尝试处理空文本
+                apiError = "自定义API URL未配置。";
             } else {
                 console.log(`${extensionName}: Using custom third-party API: ${customApiUrl}`);
                 const requestOptions = {
                     api_server: customApiUrl,
-                    // 尝试将apiKey作为参数传递，具体效果取决于SillyTavern后端和目标API
                     ...(customApiKey && { api_key: customApiKey }),
-                    // 你可能需要根据你的API添加其他参数，例如：
-                    // model: "your-specific-model-if-needed-by-the-api-proxy"
+                    // 根据需要，你可能需要在此处添加其他参数
                     // temperature: 0.7,
-                    // max_tokens: 200,
+                    // max_tokens: 200, // SillyTavern 的 textCompletionService 似乎没有直接传递这些
+                                     // 它更侧重于使用已有的SillyTavern参数结构。
+                                     // 如果自定义API需要这些，你可能需要修改 TextCompletionService 的行为
+                                     // 或者确保你的自定义API代理服务器能处理SillyTavern发送的标准参数。
                 };
 
+                // 注意: SillyTavern的TextCompletionService.generate可能不会像你期望的那样
+                // 灵活地处理任意第三方API的参数。它主要用于封装对类Ooba/KoboldCPP后端的调用。
+                // 如果你的自定义API有非常不同的格式，你可能需要直接使用 fetch。
+                // 但这里我们假设它能与SillyTavern的textgen-settings.js中的 "generic" 类型兼容。
                 const responseData = await context.TextCompletionService.generate(
                     prompt,
                     requestOptions,
-                    context.abortController?.signal
+                    context.abortController?.signal // 允许取消
                 );
-                generatedText = context.extractMessageFromData(responseData);
+                generatedText = context.extractMessageFromData(responseData); // 尝试从响应中提取文本
                 if (!generatedText) {
                     apiError = "自定义API未返回可识别的文本内容。";
                     console.error(`${extensionName}: Custom API response did not contain extractable message. Response:`, responseData);
@@ -128,14 +136,15 @@ async function handleGenerate() {
         }
 
         if (apiError) {
-            throw new Error(apiError); // 抛出错误以便被catch块捕获
+            throw new Error(apiError);
         }
 
         if (generatedText) {
+            // 对于从API返回的文本，使用SillyTavern的格式化函数进行处理
             const formattedText = context.messageFormatting(generatedText, "AI", false, false, -1, {}, false);
             responseOutput.html(formattedText);
         } else {
-            // 这个分支理论上不应该被大量触发，因为上面已经检查了!generatedText
+            // 如果到这里generatedText仍然为空，说明API调用了但没提取出东西
             responseOutput.text("生成成功，但未提取到文本内容。");
         }
 
@@ -161,17 +170,16 @@ jQuery(async () => {
 
     try {
         const html = await renderExtensionTemplateAsync(`third-party/${extensionName}`, 'settings_ui');
-        const container = $('#translation_container'); // 优先使用较新ST版本的容器
+        const container = $('#translation_container');
         if (container.length) {
             container.append(html);
         } else {
-            $('#extensions_settings').append(html); // 回退
+            $('#extensions_settings').append(html);
         }
         console.log(`${extensionName}: UI injected.`);
 
-        await loadPluginSettings(); // 加载并应用保存的设置
+        await loadPluginSettings();
 
-        // 事件绑定现在在各自的函数作用域内或在loadPluginSettings之后完成
         $('#adv_ai_api_mode').on('change', function() {
             pluginSettings.apiMode = $(this).val();
             toggleCustomApiConfigArea(pluginSettings.apiMode);
