@@ -1,144 +1,151 @@
-// public/extensions/third-party/my-custom-ai-caller/index.js
+// public/extensions/third-party/my-advanced-ai-caller/index.js
 
-// 确保从正确的相对路径导入
 import { getContext } from '../../../../scripts/st-context.js';
 import { renderExtensionTemplateAsync, extension_settings } from '../../../../scripts/extensions.js';
-import { saveSettingsDebounced } from '../../../../script.js'; // saveSettingsDebounced 在主 script.js 中
+import { saveSettingsDebounced } from '../../../../script.js';
 
-const extensionName = "AI"; // 必须与文件夹名称匹配
+const extensionName = "my-advanced-ai-caller";
 
-// 插件的默认设置
 const defaultSettings = {
-    apiUrl: "",
-    apiKey: "", // API密钥也存储在插件设置中
+    apiMode: "st_current_api", // 'st_current_api' 或 'custom_third_party'
+    customApiUrl: "",
+    customApiKey: "",
 };
 
-// 插件设置的本地副本
 let pluginSettings = {};
 
-/**
- * 加载插件设置
- */
 async function loadPluginSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
-    // 合并默认设置和已保存设置
     pluginSettings = { ...defaultSettings, ...extension_settings[extensionName] };
 
-    // 更新UI元素
-    $('#custom_ai_api_url').val(pluginSettings.apiUrl);
-    $('#custom_ai_api_key').val(pluginSettings.apiKey); // API密钥通常是敏感信息，但这里我们先简单处理
-    console.log(`${extensionName}: Settings loaded.`, pluginSettings);
+    $('#adv_ai_api_mode').val(pluginSettings.apiMode);
+    $('#adv_ai_custom_api_url').val(pluginSettings.customApiUrl);
+    $('#adv_ai_custom_api_key').val(pluginSettings.customApiKey);
+
+    toggleCustomApiConfigArea(pluginSettings.apiMode);
+    console.log(`${extensionName}: Settings loaded. Mode: ${pluginSettings.apiMode}`);
 }
 
-/**
- * 保存API URL设置
- */
-function saveApiUrl() {
-    const newUrl = $('#custom_ai_api_url').val().trim();
-    if (pluginSettings.apiUrl !== newUrl) {
-        pluginSettings.apiUrl = newUrl;
-        extension_settings[extensionName].apiUrl = newUrl; // 更新全局设置对象
-        saveSettingsDebounced();
-        console.log(`${extensionName}: API URL saved.`);
+function savePluginSettings() {
+    extension_settings[extensionName].apiMode = pluginSettings.apiMode;
+    extension_settings[extensionName].customApiUrl = pluginSettings.customApiUrl;
+    extension_settings[extensionName].customApiKey = pluginSettings.customApiKey;
+    saveSettingsDebounced();
+    console.log(`${extensionName}: Settings saved.`);
+}
+
+function toggleCustomApiConfigArea(selectedMode) {
+    if (selectedMode === "custom_third_party") {
+        $('#adv_ai_custom_api_config_area').slideDown();
+    } else {
+        $('#adv_ai_custom_api_config_area').slideUp();
     }
 }
 
-/**
- * 保存API Key设置
- */
-function saveApiKey() {
-    const newKey = $('#custom_ai_api_key').val().trim(); // 一般不直接trim密码，但这里为了演示
-    if (pluginSettings.apiKey !== newKey) {
-        pluginSettings.apiKey = newKey;
-        extension_settings[extensionName].apiKey = newKey; // 更新全局设置对象
-        saveSettingsDebounced();
-        console.log(`${extensionName}: API Key saved.`);
-    }
-}
+$('#adv_ai_api_mode').on('change', function() {
+    pluginSettings.apiMode = $(this).val();
+    toggleCustomApiConfigArea(pluginSettings.apiMode);
+    savePluginSettings();
+});
+
+$('#adv_ai_custom_api_url').on('input', function() {
+    pluginSettings.customApiUrl = $(this).val().trim();
+    savePluginSettings();
+});
+
+$('#adv_ai_custom_api_key').on('input', function() {
+    pluginSettings.customApiKey = $(this).val(); // 一般不trim密码
+    savePluginSettings();
+});
 
 
-/**
- * 处理生成按钮点击
- */
 async function handleGenerate() {
-    const context = getContext(); // 获取SillyTavern上下文
-    const apiUrl = pluginSettings.apiUrl;
-    const apiKey = pluginSettings.apiKey; // 获取API密钥
-    const prompt = $('#custom_ai_prompt_input').val().trim();
+    const context = getContext();
+    const prompt = $('#adv_ai_prompt_input').val().trim();
 
-    if (!apiUrl) {
-        toastr.error("请先在上方配置API URL。", "API URL缺失");
-        return;
-    }
     if (!prompt) {
         toastr.warning("请输入提示内容。", "提示为空");
         return;
     }
 
-    const generateButton = $('#custom_ai_generate_button');
-    const loadingSpinner = $('#custom_ai_loading_spinner');
-    const responseOutput = $('#custom_ai_response_output');
+    const generateButton = $('#adv_ai_generate_button');
+    const loadingSpinner = $('#adv_ai_loading_spinner');
+    const responseOutput = $('#adv_ai_response_output');
 
     generateButton.prop('disabled', true);
     loadingSpinner.show();
     responseOutput.html("<i>正在努力生成中...</i>");
 
+    let generatedText = "";
+    let apiError = null;
+
     try {
-        // 构建传递给SillyTavern后端服务的选项
-        // SillyTavern的TextCompletionService或ChatCompletionService会使用这些选项
-        // 将请求代理到指定的api_server
-        const requestOptions = {
-            api_server: apiUrl, // 这是关键，告诉ST后端将请求发到这个URL
-            // 在这里可以添加第三方API可能需要的其他参数
-            // 例如：max_tokens, temperature, top_p 等
-            // 这些参数的名称和格式需要与你的第三方API文档一致
-            // SillyTavern的后端会尝试将这些参数传递给目标API
-            // 对于API密钥，SillyTavern的内置服务通常不直接处理自定义API的密钥。
-            // 如果API要求在Header中传递密钥（如 'Authorization: Bearer YOUR_KEY' 或 'X-Api-Key: YOUR_KEY'），
-            // TextCompletionService 可能无法直接添加。
-            // 一种常见做法是将密钥作为URL参数（如果API支持），或者使用更底层的 context.ConnectionManagerRequestService
-            // (如果你的ST版本有并且你想自己构造完整的请求包括headers)。
-            // 另一个选择是假设用户配置的apiUrl本身已经包含了必要的认证信息，或者该API不需要key。
-            // 这里我们尝试将apiKey作为一个参数传递，某些后端或API包装器可能会识别它。
-            ...(apiKey && { api_key: apiKey }), // 如果apiKey存在，则添加到options中
-            // 你也可以尝试将apiKey放到其他可能的字段，如 'key', 'token'等，取决于API
-        };
+        if (pluginSettings.apiMode === "st_current_api") {
+            console.log(`${extensionName}: Using SillyTavern's current API to generate.`);
+            // 使用 context.generateQuietPrompt 来调用SillyTavern当前配置的API
+            // quietToLoud = true (我们想要一个明确的回复)
+            // skipWIAN = true (通常对于独立调用，我们不希望注入世界信息或作者笔记)
+            // quietName = null (使用默认或让ST处理)
+            // responseLength = null (使用ST的当前设置)
+            generatedText = await context.generateQuietPrompt(prompt, true, true, null, null, null, null);
 
-        console.log(`${extensionName}: Sending request to ${apiUrl} with options:`, requestOptions);
+            if (!generatedText && context.onlineStatus === 'no_connection') {
+                 apiError = "SillyTavern当前API未连接或生成失败。";
+            } else if (!generatedText) {
+                 apiError = "SillyTavern当前API已连接但未返回文本。";
+            }
 
-        // 使用SillyTavern的TextCompletionService通过其后端发送请求
-        // 这比直接在前端fetch更安全，能处理CORS、CSRF等问题
-        // `context.abortController?.signal` 用于允许用户通过ST的全局停止按钮来中止生成
-        const responseData = await context.TextCompletionService.generate(
-            prompt,
-            requestOptions,
-            context.abortController?.signal
-        );
+        } else if (pluginSettings.apiMode === "custom_third_party") {
+            const customApiUrl = pluginSettings.customApiUrl;
+            const customApiKey = pluginSettings.customApiKey;
 
-        console.log(`${extensionName}: Raw API response data:`, responseData);
+            if (!customApiUrl) {
+                toastr.error("请先配置自定义API URL。", "自定义API URL缺失");
+                apiError = "自定义API URL未配置。"; // 设置错误以便finally块不尝试处理空文本
+            } else {
+                console.log(`${extensionName}: Using custom third-party API: ${customApiUrl}`);
+                const requestOptions = {
+                    api_server: customApiUrl,
+                    // 尝试将apiKey作为参数传递，具体效果取决于SillyTavern后端和目标API
+                    ...(customApiKey && { api_key: customApiKey }),
+                    // 你可能需要根据你的API添加其他参数，例如：
+                    // model: "your-specific-model-if-needed-by-the-api-proxy"
+                    // temperature: 0.7,
+                    // max_tokens: 200,
+                };
 
-        // context.extractMessageFromData 尝试从不同格式的API响应中提取主要文本
-        let generatedText = context.extractMessageFromData(responseData);
+                const responseData = await context.TextCompletionService.generate(
+                    prompt,
+                    requestOptions,
+                    context.abortController?.signal
+                );
+                generatedText = context.extractMessageFromData(responseData);
+                if (!generatedText) {
+                    apiError = "自定义API未返回可识别的文本内容。";
+                    console.error(`${extensionName}: Custom API response did not contain extractable message. Response:`, responseData);
+                }
+            }
+        }
+
+        if (apiError) {
+            throw new Error(apiError); // 抛出错误以便被catch块捕获
+        }
 
         if (generatedText) {
-            // 使用ST的messageFormatting来处理可能的Markdown等格式
             const formattedText = context.messageFormatting(generatedText, "AI", false, false, -1, {}, false);
             responseOutput.html(formattedText);
         } else {
-            responseOutput.text("生成失败：API未返回可识别的文本内容。请检查API响应或控制台日志。");
-            toastr.error("API未返回有效文本，请检查API配置或查看浏览器控制台获取更多信息。", "生成失败");
-            console.error(`${extensionName}: API response did not contain extractable message. Response:`, responseData);
+            // 这个分支理论上不应该被大量触发，因为上面已经检查了!generatedText
+            responseOutput.text("生成成功，但未提取到文本内容。");
         }
 
     } catch (error) {
-        console.error(`${extensionName}: API call failed:`, error);
+        console.error(`${extensionName}: Generation failed:`, error);
         let errorMessage = "API 调用失败。";
         if (error.message) {
             errorMessage += ` 错误: ${error.message}`;
         } else if (typeof error === 'string') {
             errorMessage += ` ${error}`;
-        } else if (error.error && error.error.message) { // 常见于OpenAI类错误
-            errorMessage += ` ${error.error.message}`;
         }
         responseOutput.text(errorMessage);
         toastr.error(errorMessage, "生成失败");
@@ -154,23 +161,34 @@ jQuery(async () => {
 
     try {
         const html = await renderExtensionTemplateAsync(`third-party/${extensionName}`, 'settings_ui');
-        // 优先尝试 #translation_container，这是较新ST版本中扩展设置的常见位置
-        const container = $('#translation_container');
+        const container = $('#translation_container'); // 优先使用较新ST版本的容器
         if (container.length) {
             container.append(html);
         } else {
-            // 回退到旧版可能使用的 #extensions_settings
-            $('#extensions_settings').append(html);
+            $('#extensions_settings').append(html); // 回退
         }
         console.log(`${extensionName}: UI injected.`);
 
-        // 加载保存的设置
-        await loadPluginSettings();
+        await loadPluginSettings(); // 加载并应用保存的设置
 
-        // 绑定事件
-        $('#custom_ai_api_url').on('input', saveApiUrl);
-        $('#custom_ai_api_key').on('input', saveApiKey);
-        $('#custom_ai_generate_button').on('click', handleGenerate);
+        // 事件绑定现在在各自的函数作用域内或在loadPluginSettings之后完成
+        $('#adv_ai_api_mode').on('change', function() {
+            pluginSettings.apiMode = $(this).val();
+            toggleCustomApiConfigArea(pluginSettings.apiMode);
+            savePluginSettings();
+        });
+
+        $('#adv_ai_custom_api_url').on('input', function() {
+            pluginSettings.customApiUrl = $(this).val().trim();
+            savePluginSettings();
+        });
+
+        $('#adv_ai_custom_api_key').on('input', function() {
+            pluginSettings.customApiKey = $(this).val();
+            savePluginSettings();
+        });
+
+        $('#adv_ai_generate_button').on('click', handleGenerate);
 
         console.log(`${extensionName}: Initialization complete.`);
 
