@@ -1,32 +1,34 @@
-<!-- public/extensions/third-party/my-ai-tool-plugin/settings_ui.html -->
+<!-- public/extensions/third-party/my-custom-ai-caller/settings_ui.html -->
 <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-        <b>我的AI工具设置与测试</b>
+        <b>自定义AI调用器</b>
         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content" style="padding: 10px;">
-        <p>在此处配置并测试您的第三方AI接口。</p>
+        <p>使用此工具通过您配置的第三方API生成文本。</p>
 
-        <!-- API 配置区域 -->
         <div class="flex-container flex-align-center flex-gap-5">
-            <label for="my_ai_tool_api_url" class="inline-label">API URL:</label>
-            <input type="text" id="my_ai_tool_api_url" class="text_pole" placeholder="例如: http://localhost:5000/api/v1/generate">
+            <label for="custom_ai_api_url" class="inline-label">API URL:</label>
+            <input type="text" id="custom_ai_api_url" class="text_pole" placeholder="例如: https://api.example.com/generate">
         </div>
-        <small>输入第三方API的文本生成接口URL。</small>
+        <small>您的第三方文本生成API的完整URL。</small>
+        <br><br>
+        <div class="flex-container flex-align-center flex-gap-5">
+            <label for="custom_ai_api_key" class="inline-label">API 密钥 (可选):</label>
+            <input type="password" id="custom_ai_api_key" class="text_pole" placeholder="如果API需要，请输入密钥">
+        </div>
+        <small>如果您的API需要身份验证密钥，请在此处输入。</small>
         <hr class="sysHR">
 
-        <!-- 文本生成区域 -->
-        <label for="my_ai_tool_prompt_input">输入文本 (Prompt):</label>
-        <textarea id="my_ai_tool_prompt_input" class="text_pole autoSetHeight" rows="4" placeholder="输入您想让AI生成的内容..."></textarea>
+        <label for="custom_ai_prompt_input">输入提示 (Prompt):</label>
+        <textarea id="custom_ai_prompt_input" class="text_pole autoSetHeight" rows="5" placeholder="在此输入您想发送给AI的文本..."></textarea>
 
-        <button id="my_ai_tool_generate_button" class="menu_button">生成回答</button>
-        <span id="my_ai_tool_loading_spinner" class="fa-solid fa-spinner fa-spin" style="display: none; margin-left: 10px;"></span>
+        <button id="custom_ai_generate_button" class="menu_button">生成回答</button>
+        <span id="custom_ai_loading_spinner" class="fa-solid fa-spinner fa-spin" style="display: none; margin-left: 10px;"></span>
 
-        <label for="my_ai_tool_response_output" style="margin-top: 10px;">AI 回复:</label>
-        <div id="my_ai_tool_response_output" class="text_block">
-            <!-- AI 生成的回复将显示在这里 -->
-            等待生成...
+        <label for="custom_ai_response_output" style="margin-top: 15px;">AI 回复:</label>
+        <div id="custom_ai_response_output" class="text_block">
+            AI的回复将显示在这里...
         </div>
-        <hr class="sysHR">
     </div>
 </div>
