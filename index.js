@@ -5,7 +5,7 @@ import { getContext } from '../../../../scripts/st-context.js';
 import { renderExtensionTemplateAsync, extension_settings } from '../../../../scripts/extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js'; // saveSettingsDebounced 在主 script.js 中
 
-const extensionName = "my-custom-ai-caller"; // 必须与文件夹名称匹配
+const extensionName = "AI"; // 必须与文件夹名称匹配
 
 // 插件的默认设置
 const defaultSettings = {
