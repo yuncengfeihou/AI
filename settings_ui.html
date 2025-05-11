@@ -1,33 +1,46 @@
-<!-- public/extensions/third-party/my-custom-ai-caller/settings_ui.html -->
+<!-- public/extensions/third-party/my-advanced-ai-caller/settings_ui.html -->
 <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-        <b>自定义AI调用器</b>
+        <b>高级AI调用器</b>
         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content" style="padding: 10px;">
-        <p>使用此工具通过您配置的第三方API生成文本。</p>
+        <p>选择API模式并输入提示以生成文本。</p>
 
         <div class="flex-container flex-align-center flex-gap-5">
-            <label for="custom_ai_api_url" class="inline-label">API URL:</label>
-            <input type="text" id="custom_ai_api_url" class="text_pole" placeholder="例如: https://api.example.com/generate">
+            <label for="adv_ai_api_mode" class="inline-label">API 模式:</label>
+            <select id="adv_ai_api_mode" class="text_pole">
+                <option value="st_current_api" selected>使用SillyTavern当前API</option>
+                <option value="custom_third_party">使用自定义第三方API</option>
+            </select>
         </div>
-        <small>您的第三方文本生成API的完整URL。</small>
-        <br><br>
-        <div class="flex-container flex-align-center flex-gap-5">
-            <label for="custom_ai_api_key" class="inline-label">API 密钥 (可选):</label>
-            <input type="password" id="custom_ai_api_key" class="text_pole" placeholder="如果API需要，请输入密钥">
-        </div>
-        <small>如果您的API需要身份验证密钥，请在此处输入。</small>
         <hr class="sysHR">
 
-        <label for="custom_ai_prompt_input">输入提示 (Prompt):</label>
-        <textarea id="custom_ai_prompt_input" class="text_pole autoSetHeight" rows="5" placeholder="在此输入您想发送给AI的文本..."></textarea>
+        <!-- 自定义API配置区域，默认隐藏 -->
+        <div id="adv_ai_custom_api_config_area" style="display: none;">
+            <h4>自定义第三方API配置:</h4>
+            <div class="flex-container flex-align-center flex-gap-5">
+                <label for="adv_ai_custom_api_url" class="inline-label">API URL:</label>
+                <input type="text" id="adv_ai_custom_api_url" class="text_pole" placeholder="例如: https://api.example.com/generate">
+            </div>
+            <small>您的第三方文本生成API的完整URL。</small>
+            <br><br>
+            <div class="flex-container flex-align-center flex-gap-5">
+                <label for="adv_ai_custom_api_key" class="inline-label">API 密钥 (可选):</label>
+                <input type="password" id="adv_ai_custom_api_key" class="text_pole" placeholder="如果API需要，请输入密钥">
+            </div>
+            <small>如果您的API需要身份验证密钥，请在此处输入。</small>
+            <hr class="sysHR">
+        </div>
 
-        <button id="custom_ai_generate_button" class="menu_button">生成回答</button>
-        <span id="custom_ai_loading_spinner" class="fa-solid fa-spinner fa-spin" style="display: none; margin-left: 10px;"></span>
+        <label for="adv_ai_prompt_input">输入提示 (Prompt):</label>
+        <textarea id="adv_ai_prompt_input" class="text_pole autoSetHeight" rows="5" placeholder="在此输入您想发送给AI的文本..."></textarea>
 
-        <label for="custom_ai_response_output" style="margin-top: 15px;">AI 回复:</label>
-        <div id="custom_ai_response_output" class="text_block">
+        <button id="adv_ai_generate_button" class="menu_button">生成回答</button>
+        <span id="adv_ai_loading_spinner" class="fa-solid fa-spinner fa-spin" style="display: none; margin-left: 10px;"></span>
+
+        <label for="adv_ai_response_output" style="margin-top: 15px;">AI 回复:</label>
+        <div id="adv_ai_response_output" class="text_block">
             AI的回复将显示在这里...
         </div>
     </div>
