@@ -42,8 +42,6 @@ function toggleCustomApiConfigArea(selectedMode) {
     }
 }
 
-// 事件绑定现在在 jQuery(async () => { ... }); 内部完成
-
 async function handleGenerate() {
     const context = getContext();
     const prompt = $('#adv_ai_prompt_input').val().trim();
@@ -59,7 +57,7 @@ async function handleGenerate() {
 
     generateButton.prop('disabled', true);
     loadingSpinner.show();
-    responseOutput.html("<i>正在努力生成中...</i>");
+    responseOutput.html("<i>正在努力生成中...</i>"); // 使用 html 允许斜体
 
     let generatedText = "";
     let apiError = null;
@@ -73,67 +71,58 @@ async function handleGenerate() {
             let requestData = {};
             const headers = context.getRequestHeaders();
 
-            // 根据不同的API构建请求体和确定端点
+            // 根据不同的API类型构建请求体和确定端点
             switch (mainApi) {
                 case 'kobold':
-                    endpoint = '/api/backends/kobold/generate';
+                case 'koboldhorde':
+                case 'textgenerationwebui':
+                case 'novel':
+                    // 这些通常是 Text Completion API 或其代理
+                    endpoint = `/api/backends/${mainApi}/generate`; // 文本补全后端通用端点
                     requestData = {
                         prompt: prompt,
                         max_length: context.amountGen, // 使用ST配置的最大生成长度
-                        // 可以根据需要添加其他少量参数，但目标是最小化
-                        temperature: power_user.temperature, // 示例：可以包含一些通用设置
+                        // 可以选择性添加一些通用参数，但尽量保持简单
+                        temperature: power_user.temperature,
                         top_p: power_user.top_p,
-                        // 注意：这里不包含 character_name, description, chat history 等，
-                        // 因为目标是发送原始prompt
+                        // 注意：不包含任何角色卡、历史等信息
                     };
+                     if (mainApi === 'textgenerationwebui') {
+                         // textgenerationwebui 代理会根据其内部配置处理 api_server 等
+                         // 不需要在这里 explicitly 添加
+                     } else if (mainApi === 'kobold' || mainApi === 'koboldhorde') {
+                         // Kobold 系列可能需要 api_server，但通常由后端代理自动处理
+                         // 这里为了最小化，不添加，依赖后端代理的默认行为
+                     } else if (mainApi === 'novel') {
+                         // NovelAI 代理处理密钥和模型，这里只提供提示和长度
+                     }
                     break;
-                case 'koboldhorde': // Horde 也可以发送原始提示
-                     endpoint = '/api/backends/koboldhorde/generate';
-                     requestData = {
-                        prompt: prompt,
-                        max_length: context.amountGen, // 使用ST配置的最大生成长度
-                        // Horde 参数结构可能有所不同，但核心应包含 prompt 和 max_length
-                        // 后端代理会处理Horde特定的参数映射和密钥
-                     };
-                     break;
-                case 'textgenerationwebui': // 适配 Ooba, KoboldCPP, LlamaCPP 等 Text Completion 后端
-                    endpoint = '/api/backends/text-completions/generate';
-                    requestData = {
-                        prompt: prompt,
-                        max_length: context.amountGen, // 使用ST配置的最大生成长度
-                        // text-completions 代理会根据具体后端类型处理参数
-                        // 默认可能会使用 textgen-settings.js 中的配置
-                        temperature: power_user.temperature, // 示例：可以包含一些通用设置
-                        top_p: power_user.top_p,
-                    };
-                    break;
-                case 'novel': // NovelAI
-                    endpoint = '/api/novelai/generate';
-                    requestData = {
-                        prompt: prompt,
-                        max_length: context.amountGen, // 使用ST配置的最大生成长度
-                        // NovelAI 代理会处理 NovelAI 密钥和参数映射
-                         temperature: context.nai_settings.temperature_novel, // 示例：使用NovelAI特定设置
-                         top_p: context.nai_settings.top_p_novel,
-                         // ... 其他 NovelAI 相关设置
-                    };
-                    break;
-                case 'openai': // 适配 OpenAI (包括通过 ST 代理的其他 Chat Completion API)
+                case 'openai':
+                    // OpenAI (以及通过ST代理的Chat Completion API)
+                    // 端点不同，请求体格式也不同
                     endpoint = '/api/openai/chat/completions'; // Chat Completion API 端点
                     requestData = {
                         messages: [{ role: "user", content: prompt }], // Chat Completion 格式
                         max_tokens: context.chatCompletionSettings.openai_max_tokens || 500, // 使用OAI配置的最大令牌数
                         temperature: context.chatCompletionSettings.openai_temperature, // 使用OAI特定设置
                         top_p: context.chatCompletionSettings.openai_top_p,
-                        // ... 其他相关设置，如 model (通常由ST后端根据配置处理)
+                        // model 通常由ST后端根据OAI配置页面选择的模型自动处理
+                        // 如果需要强制指定模型，可以添加 model: "your-model-name"
                     };
                     // OpenAI 不需要设置 'Content-Type': 'application/json' 之外的其他头部
+                    // SillyTavern 后端会自动处理 CSRF token 等
                     break;
                 default:
                     // 如果是其他未适配的API类型
-                    apiError = `SillyTavern 当前配置的 API (${mainApi}) 不支持此模式。`;
+                    apiError = `SillyTavern 当前配置的 API (${mainApi}) 不支持通过此插件发送原始提示。`;
                     throw new Error(apiError); // 抛出错误以进入catch块
             }
+
+             // 检查端点是否已确定
+             if (!endpoint) {
+                 apiError = `无法确定当前 API (${mainApi}) 的生成端点。`;
+                 throw new Error(apiError);
+             }
 
              // 发送请求
             const response = await fetch(endpoint, {
@@ -149,7 +138,8 @@ async function handleGenerate() {
                 try {
                     errorBody = await response.json();
                 } catch {
-                    errorBody = { message: response.statusText };
+                    // 如果响应不是JSON，直接使用状态文本作为错误信息
+                    errorBody = { message: response.statusText || `HTTP error! status: ${response.status}` };
                 }
                 apiError = `API 返回错误 ${response.status}: ${errorBody.message || JSON.stringify(errorBody)}`;
                 throw new Error(apiError); // 抛出错误以进入catch块
@@ -159,17 +149,21 @@ async function handleGenerate() {
             const responseData = await response.json();
 
             // 使用 context.extractMessageFromData 提取文本，传入实际API类型以确保正确解析
-            generatedText = context.extractMessageFromData(responseData, mainApi);
+            // 对于 OpenAI，需要传入 'openai' 而不是具体的 Chat Completion Source (如 'google')
+            // 因为 extractMessageFromData 内部逻辑只认 'openai' 来处理 messages 数组
+            const extractionApiType = mainApi === 'openai' ? 'openai' : mainApi;
+            generatedText = context.extractMessageFromData(responseData, extractionApiType);
 
             if (!generatedText) {
-                apiError = `API ${mainApi} 调用成功但未提取到文本内容。`;
+                apiError = `API ${mainApi} 调用成功但未提取到文本内容。请检查控制台查看完整响应。`;
                 console.warn(`${extensionName}: API response did not contain extractable message. Response:`, responseData);
                 // 即使未提取到文本，也不抛出错误，让responseOutput显示空结果或警告
             }
 
 
         } else if (pluginSettings.apiMode === "custom_third_party") {
-            // 保留原有的使用 TextCompletionService 的逻辑
+            // 保留原有的使用 TextCompletionService 的逻辑，
+            // 但要注意 TextCompletionService 主要用于封装 Text Completion 后端
             const customApiUrl = pluginSettings.customApiUrl;
             const customApiKey = pluginSettings.customApiKey;
 
@@ -178,15 +172,16 @@ async function handleGenerate() {
                 throw new Error(apiError);
             } else {
                 console.log(`${extensionName}: Using custom third-party API: ${customApiUrl}`);
+                // TextCompletionService 期望的参数结构可能与后端实际需要的有出入
+                // 如果自定义API不兼容 TextCompletionService 的封装，可能需要直接使用 fetch
                 const requestOptions = {
                     api_server: customApiUrl,
                     ...(customApiKey && { api_key: customApiKey }),
-                    // TextCompletionService 通常期望 Text Completion 类的参数结构
-                    prompt: prompt, // 发送用户提示
-                    max_length: context.amountGen, // 示例：使用ST配置的最大生成长度
+                    prompt: prompt,
+                    max_length: context.amountGen,
                     temperature: power_user.temperature,
                     top_p: power_user.top_p,
-                    // ... 其他你希望传递的参数 (依赖于 TextCompletionService 的实现和后端代理的能力)
+                    // ... 其他参数
                 };
 
                 try {
@@ -195,15 +190,18 @@ async function handleGenerate() {
                         requestOptions,
                         context.abortController?.signal // 允许取消
                      );
+                     // TextCompletionService.generate 返回的数据结构取决于其内部封装的后端类型
+                     // 尝试使用 extractMessageFromData，可能需要猜测或知道其封装的后端类型
+                     // 这里假设它返回的数据结构类似 textgenerationwebui 或 generic
                      generatedText = context.extractMessageFromData(responseData);
                      if (!generatedText) {
-                         apiError = "自定义API未返回可识别的文本内容。";
+                         apiError = "自定义API未返回可识别的文本内容。请检查控制台查看完整响应。";
                          console.error(`${extensionName}: Custom API response did not contain extractable message. Response:`, responseData);
                      }
                 } catch (e) {
                      apiError = `Custom API call failed: ${e.message || e}`;
                      console.error(`${extensionName}: Custom API fetch failed:`, e);
-                     throw new Error(apiError); // 抛出错误以进入catch块
+                     throw e; // 抛出错误以进入catch块
                 }
             }
         }
@@ -211,11 +209,12 @@ async function handleGenerate() {
         // 显示结果
         if (generatedText) {
             // 对于从API返回的文本，使用SillyTavern的格式化函数进行处理
-            const formattedText = context.messageFormatting(generatedText, "AI", false, false, -1, {}, false);
+            // 传递 null 作为 messageId 可以避免一些与消息ID相关的逻辑，因为这不是聊天中的消息
+            const formattedText = context.messageFormatting(generatedText, "AI", false, false, null, {}, false);
             responseOutput.html(formattedText);
         } else {
-            // 如果没有提取到文本，显示一个提示
-            responseOutput.text(apiError || "生成成功，但未提取到文本内容。");
+            // 如果没有提取到文本，显示一个提示（如果apiError已设置，它会显示）
+             responseOutput.text(apiError || "生成成功，但未提取到文本内容。");
         }
 
 
@@ -227,6 +226,8 @@ async function handleGenerate() {
              errorMessage += ` 错误: ${error.message}`;
         } else if (typeof error === 'string') {
              errorMessage += ` ${error}`;
+        } else {
+             errorMessage += ` 未知错误: ${JSON.stringify(error)}`;
         }
         responseOutput.text(errorMessage);
         toastr.error(errorMessage, "生成失败");
