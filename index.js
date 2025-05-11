@@ -1,178 +1,181 @@
-// public/extensions/third-party/my-ai-tool-plugin/index.js
+// public/extensions/third-party/my-custom-ai-caller/index.js
 
-// 注意：导入路径可能需要根据你的 SillyTavern 版本和文件结构进行调整
-// 确保从正确的相对路径导入 getContext 和 renderExtensionTemplateAsync
-import { getContext } from '../../../st-context.js'; // 从 st-context.js 导入 getContext
-import { renderExtensionTemplateAsync, extension_settings } from '../../../extensions.js';
-import { saveSettingsDebounced } from '../../../../script.js'; // 从 script.js 导入 saveSettingsDebounced
+// 确保从正确的相对路径导入
+import { getContext } from '../../../../scripts/st-context.js';
+import { renderExtensionTemplateAsync, extension_settings } from '../../../../scripts/extensions.js';
+import { saveSettingsDebounced } from '../../../../script.js'; // saveSettingsDebounced 在主 script.js 中
 
-// 插件文件夹名称，务必与 manifest.json 中的名称以及实际文件夹名一致！
-const extensionName = "AI";
+const extensionName = "my-custom-ai-caller"; // 必须与文件夹名称匹配
 
 // 插件的默认设置
 const defaultSettings = {
-    apiUrl: "", // 默认API URL为空
+    apiUrl: "",
+    apiKey: "", // API密钥也存储在插件设置中
 };
 
-// 获取插件的设置对象（在 SillyTavern 加载插件时会自动初始化 extension_settings）
-// 在 jQuery(async () => { ... }) 内部访问 extension_settings[extensionName] 更安全
-let pluginSettings = {}; // 稍后在 jQuery 回调中初始化
+// 插件设置的本地副本
+let pluginSettings = {};
 
 /**
- * 加载插件设置并合并默认值
+ * 加载插件设置
  */
-async function loadSettings() {
-    // 确保插件设置对象存在
+async function loadPluginSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
-    // 合并默认设置，确保所有设置项都有值 (已有的设置不会被覆盖)
-    Object.assign(extension_settings[extensionName], {
-        ...defaultSettings, // 先放默认值
-        ...extension_settings[extensionName], // 再放用户已保存的值
-    });
-    // 将全局设置对象的引用赋给局部变量，方便访问
-    pluginSettings = extension_settings[extensionName];
+    // 合并默认设置和已保存设置
+    pluginSettings = { ...defaultSettings, ...extension_settings[extensionName] };
 
-    console.log(`插件 ${extensionName}: 设置加载完成`, pluginSettings);
+    // 更新UI元素
+    $('#custom_ai_api_url').val(pluginSettings.apiUrl);
+    $('#custom_ai_api_key').val(pluginSettings.apiKey); // API密钥通常是敏感信息，但这里我们先简单处理
+    console.log(`${extensionName}: Settings loaded.`, pluginSettings);
 }
 
 /**
  * 保存API URL设置
  */
-function saveApiUrlSetting() {
-    const newUrl = $('#my_ai_tool_api_url').val().trim();
+function saveApiUrl() {
+    const newUrl = $('#custom_ai_api_url').val().trim();
     if (pluginSettings.apiUrl !== newUrl) {
         pluginSettings.apiUrl = newUrl;
-        saveSettingsDebounced(); // 调用防抖保存函数
-        console.log(`插件 ${extensionName}: API URL 设置已更新并保存`);
+        extension_settings[extensionName].apiUrl = newUrl; // 更新全局设置对象
+        saveSettingsDebounced();
+        console.log(`${extensionName}: API URL saved.`);
     }
 }
 
 /**
- * 处理生成按钮点击事件
+ * 保存API Key设置
  */
-async function handleGenerateClick() {
-    const context = getContext(); // 获取 SillyTavern 上下文
-    const apiUrl = pluginSettings.apiUrl; // 从设置中获取API URL
-    const prompt = $('#my_ai_tool_prompt_input').val().trim(); // 获取输入的Prompt
+function saveApiKey() {
+    const newKey = $('#custom_ai_api_key').val().trim(); // 一般不直接trim密码，但这里为了演示
+    if (pluginSettings.apiKey !== newKey) {
+        pluginSettings.apiKey = newKey;
+        extension_settings[extensionName].apiKey = newKey; // 更新全局设置对象
+        saveSettingsDebounced();
+        console.log(`${extensionName}: API Key saved.`);
+    }
+}
 
-    // 简单的输入验证
+
+/**
+ * 处理生成按钮点击
+ */
+async function handleGenerate() {
+    const context = getContext(); // 获取SillyTavern上下文
+    const apiUrl = pluginSettings.apiUrl;
+    const apiKey = pluginSettings.apiKey; // 获取API密钥
+    const prompt = $('#custom_ai_prompt_input').val().trim();
+
     if (!apiUrl) {
-        toastr.error("请在设置中填写API URL。", "API URL 缺失");
+        toastr.error("请先在上方配置API URL。", "API URL缺失");
         return;
     }
     if (!prompt) {
-        toastr.warning("请输入要生成的内容。", "Prompt 为空");
+        toastr.warning("请输入提示内容。", "提示为空");
         return;
     }
 
-    // 获取 UI 元素，用于显示状态和结果
-    const generateButton = $('#my_ai_tool_generate_button');
-    const loadingSpinner = $('#my_ai_tool_loading_spinner');
-    const responseOutput = $('#my_ai_tool_response_output');
+    const generateButton = $('#custom_ai_generate_button');
+    const loadingSpinner = $('#custom_ai_loading_spinner');
+    const responseOutput = $('#custom_ai_response_output');
 
-    // 更新 UI 状态：禁用按钮，显示加载动画
     generateButton.prop('disabled', true);
     loadingSpinner.show();
-    responseOutput.text("正在生成..."); // 显示生成中状态
+    responseOutput.html("<i>正在努力生成中...</i>");
 
     try {
-        // 使用 SillyTavern 的 TextCompletionService 通过后端发送请求
-        // TextCompletionService 适用于只需要发送 Prompt 并接收文本回复的第三方API
-        // 如果API需要更复杂的请求结构 (如聊天消息数组)，可能需要使用 ChatCompletionService
-        // 或直接通过 ST 后端发送自定义请求 (这更复杂，通常 TextCompletionService/ChatCompletionService 已足够)
+        // 构建传递给SillyTavern后端服务的选项
+        // SillyTavern的TextCompletionService或ChatCompletionService会使用这些选项
+        // 将请求代理到指定的api_server
+        const requestOptions = {
+            api_server: apiUrl, // 这是关键，告诉ST后端将请求发到这个URL
+            // 在这里可以添加第三方API可能需要的其他参数
+            // 例如：max_tokens, temperature, top_p 等
+            // 这些参数的名称和格式需要与你的第三方API文档一致
+            // SillyTavern的后端会尝试将这些参数传递给目标API
+            // 对于API密钥，SillyTavern的内置服务通常不直接处理自定义API的密钥。
+            // 如果API要求在Header中传递密钥（如 'Authorization: Bearer YOUR_KEY' 或 'X-Api-Key: YOUR_KEY'），
+            // TextCompletionService 可能无法直接添加。
+            // 一种常见做法是将密钥作为URL参数（如果API支持），或者使用更底层的 context.ConnectionManagerRequestService
+            // (如果你的ST版本有并且你想自己构造完整的请求包括headers)。
+            // 另一个选择是假设用户配置的apiUrl本身已经包含了必要的认证信息，或者该API不需要key。
+            // 这里我们尝试将apiKey作为一个参数传递，某些后端或API包装器可能会识别它。
+            ...(apiKey && { api_key: apiKey }), // 如果apiKey存在，则添加到options中
+            // 你也可以尝试将apiKey放到其他可能的字段，如 'key', 'token'等，取决于API
+        };
 
-        // TextCompletionService.generate 的参数通常是 prompt 字符串 和 options 对象
-        // options 对象中可以包含 api_server (即第三方API的URL) 以及其他API可能需要的参数
-        // ST 后端会负责将这些参数以及 Prompt 按照配置发送到指定的 api_server
+        console.log(`${extensionName}: Sending request to ${apiUrl} with options:`, requestOptions);
+
+        // 使用SillyTavern的TextCompletionService通过其后端发送请求
+        // 这比直接在前端fetch更安全，能处理CORS、CSRF等问题
+        // `context.abortController?.signal` 用于允许用户通过ST的全局停止按钮来中止生成
         const responseData = await context.TextCompletionService.generate(
             prompt,
-            {
-                api_server: apiUrl,
-                // 您可以在这里添加其他 API 可能需要的参数，例如:
-                // max_length: 200,
-                // temperature: 0.7,
-                // stopping_strings: ["\nUser:", "\nAssistant:"],
-                // 注意：这些参数需要根据您的第三方API实际支持的参数名来填写
-            },
-            context.abortController?.signal // 传递当前的 abort signal，允许用户通过 ST 的停止按钮取消生成
+            requestOptions,
+            context.abortController?.signal
         );
 
-        console.log("API 原始回复数据:", responseData);
+        console.log(`${extensionName}: Raw API response data:`, responseData);
 
-        // 从 API 回复数据中提取文本内容
-        // context.extractMessageFromData 是一个内置函数，可以尝试从不同API格式中提取文本
-        const generatedText = context.extractMessageFromData(responseData);
+        // context.extractMessageFromData 尝试从不同格式的API响应中提取主要文本
+        let generatedText = context.extractMessageFromData(responseData);
 
         if (generatedText) {
-            // 使用 messageFormatting 函数对回复进行格式化（例如 Markdown）
-            // 参数: 消息文本, 角色名(这里可以为空), 是否系统消息, 是否用户消息, 消息ID(这里可以随意), Sanitizer选项, 是否Reasoning
-            const formattedText = context.messageFormatting(generatedText, "", false, false, -1, {}, false);
-            responseOutput.html(formattedText); // 使用 html() 以便渲染 Markdown
+            // 使用ST的messageFormatting来处理可能的Markdown等格式
+            const formattedText = context.messageFormatting(generatedText, "AI", false, false, -1, {}, false);
+            responseOutput.html(formattedText);
         } else {
-             responseOutput.text("生成失败：API未返回文本内容。");
-             toastr.error("API未返回文本内容，请检查API配置或回复格式。", "生成失败");
+            responseOutput.text("生成失败：API未返回可识别的文本内容。请检查API响应或控制台日志。");
+            toastr.error("API未返回有效文本，请检查API配置或查看浏览器控制台获取更多信息。", "生成失败");
+            console.error(`${extensionName}: API response did not contain extractable message. Response:`, responseData);
         }
 
     } catch (error) {
-        console.error("API 调用失败:", error);
+        console.error(`${extensionName}: API call failed:`, error);
         let errorMessage = "API 调用失败。";
         if (error.message) {
-            errorMessage += ` 错误信息: ${error.message}`;
-        } else if (error.response) {
-             errorMessage += ` 错误信息: ${JSON.stringify(error.response)}`;
+            errorMessage += ` 错误: ${error.message}`;
+        } else if (typeof error === 'string') {
+            errorMessage += ` ${error}`;
+        } else if (error.error && error.error.message) { // 常见于OpenAI类错误
+            errorMessage += ` ${error.error.message}`;
         }
         responseOutput.text(errorMessage);
         toastr.error(errorMessage, "生成失败");
     } finally {
-        // 恢复 UI 状态：启用按钮，隐藏加载动画
         generateButton.prop('disabled', false);
         loadingSpinner.hide();
     }
 }
 
-
-// SillyTavern 加载完成后执行主逻辑
+// DOM加载完成后执行
 jQuery(async () => {
-    console.log(`插件 ${extensionName} 开始初始化...`);
+    console.log(`${extensionName}: Initializing...`);
 
-    // 1. 加载 HTML 模板并注入到扩展设置区域
     try {
-        // 加载 settings_ui.html 的内容
-        const settingsHtml = await renderExtensionTemplateAsync(`third-party/${extensionName}`, 'settings_ui');
-
-        // 将加载的 HTML 追加到 SillyTavern 的扩展设置区域
-        // 目标容器通常是 '#translation_container' 或 '#extensions_settings'
-        // 优先尝试 '#translation_container'
-        const targetContainer = $('#translation_container');
-        if (targetContainer.length) {
-             targetContainer.append(settingsHtml);
-             console.log(`插件 ${extensionName}: 已添加设置界面到 #translation_container`);
+        const html = await renderExtensionTemplateAsync(`third-party/${extensionName}`, 'settings_ui');
+        // 优先尝试 #translation_container，这是较新ST版本中扩展设置的常见位置
+        const container = $('#translation_container');
+        if (container.length) {
+            container.append(html);
         } else {
-             // 如果 #translation_container 不存在，尝试 #extensions_settings
-             $('#extensions_settings').append(settingsHtml);
-             console.log(`插件 ${extensionName}: 已添加设置界面到 #extensions_settings`);
+            // 回退到旧版可能使用的 #extensions_settings
+            $('#extensions_settings').append(html);
         }
+        console.log(`${extensionName}: UI injected.`);
 
+        // 加载保存的设置
+        await loadPluginSettings();
+
+        // 绑定事件
+        $('#custom_ai_api_url').on('input', saveApiUrl);
+        $('#custom_ai_api_key').on('input', saveApiKey);
+        $('#custom_ai_generate_button').on('click', handleGenerate);
+
+        console.log(`${extensionName}: Initialization complete.`);
 
     } catch (error) {
-        console.error(`插件 ${extensionName}: 加载或注入 settings_ui.html 失败:`, error);
-        toastr.error(`插件 ${extensionName} 加载界面失败。`);
-        return; // 如果界面加载失败，停止后续初始化
+        console.error(`${extensionName}: Failed to initialize -`, error);
+        toastr.error(`插件 ${extensionName} 初始化失败。详情请查看控制台。`);
     }
-
-    // 2. 加载插件设置并更新 UI 上的设置字段
-    await loadSettings(); // 等待设置加载完成
-
-    // 使用加载的设置值更新 API URL 输入框
-    $('#my_ai_tool_api_url').val(pluginSettings.apiUrl);
-
-
-    // 3. 为 UI 元素绑定事件监听器
-    // 绑定 API URL 输入框的 input 事件，用于实时保存设置
-    $('#my_ai_tool_api_url').on('input', saveApiUrlSetting);
-
-    // 绑定生成按钮的点击事件
-    $('#my_ai_tool_generate_button').on('click', handleGenerateClick);
-
-    console.log(`插件 ${extensionName} 初始化完成。`);
 });
