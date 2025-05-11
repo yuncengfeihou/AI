@@ -3,8 +3,14 @@
 import { getContext } from '../../../../scripts/st-context.js';
 import { renderExtensionTemplateAsync, extension_settings } from '../../../../scripts/extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
-import { debounce } from '../../../../scripts/utils.js'; // <--- 导入 debounce
 import { debounce_timeout } from '../../../../scripts/constants.js'; // 导入 debounce_timeout
+// 导入 debounce 函数，通常在 utils.js 中
+import { debounce } from '../../../../scripts/utils.js'; // <-- 确保 utils.js 的路径正确
+
+// TavernHelper 全局对象由 JS-Slash-Runner/iframe_client.js 注入
+// 可以在 iframe 中直接访问 window.TavernHelper
+// 为了 TypeScript 类型提示或代码清晰，可以添加一个声明
+// declare const TavernHelper: typeof window.TavernHelper; // 如果使用 TypeScript
 
 const extensionName = "AI";
 
@@ -15,7 +21,7 @@ const defaultSettings = {
 };
 
 let pluginSettings = {};
-// let saveSettingsDebouncedLocal; // 延迟函数在第一次调用时创建
+let saveSettingsDebouncedLocal; // 用于延迟保存设置
 
 async function loadPluginSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
@@ -28,7 +34,6 @@ async function loadPluginSettings() {
         }
     }
 
-
     $('#adv_ai_api_mode').val(pluginSettings.apiMode);
     $('#adv_ai_custom_api_url').val(pluginSettings.customApiUrl);
     $('#adv_ai_custom_api_key').val(pluginSettings.customApiKey); // 注意：不建议在前端存储敏感信息
@@ -37,16 +42,20 @@ async function loadPluginSettings() {
     console.log(`${extensionName}: Settings loaded. Mode: ${pluginSettings.apiMode}`);
 }
 
-// 使用一个全局或外部的 debounce 实例
-// 如果你只在一个地方使用，也可以在第一次调用 savePluginSettings 时初始化
-let saveSettingsDebouncedLocal = debounce((settingsToSave) => {
-    extension_settings[extensionName] = { ...extension_settings[extensionName], ...settingsToSave };
-    saveSettingsDebounced(); // 调用 SillyTavern 的保存设置函数
-    console.log(`${extensionName}: Settings saved (debounced).`);
-}, debounce_timeout.DEFAULT_SAVE_EDIT_TIMEOUT); // 使用 ST 提供的默认延迟时间
-
-
 function savePluginSettings() {
+    // 使用一个延迟函数来避免频繁保存
+    if (!saveSettingsDebouncedLocal) {
+         // 创建一个 debounced 函数，延迟时间使用 SillyTavern 的默认保存延迟
+        saveSettingsDebouncedLocal = debounce((settingsToSave) => {
+             // 注意：直接修改 extension_settings[extensionName] 可能不是最佳实践
+             // 但为了保持与您的原有代码风格一致，暂时这样处理。
+             // 更安全的做法是深拷贝后再赋值。
+             extension_settings[extensionName] = { ...extension_settings[extensionName], ...settingsToSave };
+             saveSettingsDebounced(); // 调用 SillyTavern 的保存设置函数
+             console.log(`${extensionName}: Settings saved (debounced).`);
+        }, debounce_timeout.DEFAULT_SAVE_EDIT_TIMEOUT); // 使用 ST 提供的默认延迟时间
+    }
+
     // 准备要保存的设置对象
     const settingsToSave = {
         apiMode: pluginSettings.apiMode,
@@ -84,192 +93,146 @@ async function handleGenerate() {
     responseOutput.html("<i>正在努力生成中...</i>"); // 显示加载状态
 
     let generatedText = "";
-    let apiError = null;
-    let responseData = null; // 用于存储原始响应数据
+    // apiError variable is less necessary when using generateRaw directly
+    // as errors from the API call itself should be thrown by generateRaw.
 
     try {
         if (pluginSettings.apiMode === "st_current_api") {
-            console.log(`${extensionName}: Using SillyTavern's current API for raw prompt (via direct fetch).`);
+            console.log(`${extensionName}: Using SillyTavern's current API via TavernHelper.generateRaw.`);
 
-            const mainApi = context.mainApi;
-            let endpoint = '';
-            let requestBody = {}; // 注意这里改名为 requestBody 以区分 fetch 参数
-            const headers = context.getRequestHeaders(); // 获取 ST 的通用头部，包含 CSRF token
+            // ====================================================================
+            // *** 核心修改部分：调用 TavernHelper.generateRaw ***
+            // generateRaw 允许通过 ordered_prompts 参数完全自定义发送给 API 的提示词结构
+            // 这里我们只发送一个 role 为 'user' 的消息，内容就是用户输入的 prompt
+            // generateRaw 会自动使用 SillyTavern 当前配置的 API (URL, Key, etc.)
+            // 它也会触发 SillyTavern 的生成开始/结束事件，并处理流式传输（如果开启）
+            // ====================================================================
+            const generateConfig = {
+                 // user_input is optional if the prompt is in ordered_prompts
+                 // For clarity and strict control, define the entire structure
+                 ordered_prompts: [
+                     { role: 'user', content: prompt }
+                 ],
+                 // If you wanted to enable streaming for this plugin's generation:
+                 // should_stream: true,
+                 // You could then listen to iframe_events.STREAM_TOKEN_RECEIVED_*
+                 // For this example, we just wait for the final result.
 
-            // 根据不同的API构建请求体和确定端点
-            switch (mainApi) {
-                case 'kobold':
-                case 'koboldhorde':
-                case 'textgenerationwebui':
-                case 'novel':
-                     // Text Completion APIs
-                     // context.getGenerateUrl 适用于 Text Completion
-                     endpoint = context.getGenerateUrl(mainApi);
-                     requestBody = {
-                         prompt: prompt, // 发送用户输入作为原始提示
-                         // 包含必要的生成参数 (从 context 获取)
-                         max_length: context.amountGen, // 使用 SillyTavern 配置的最大生成长度
-                         temperature: context.power_user?.temperature, // <--- 从 context 访问
-                         top_p: context.power_user?.top_p,             // <--- 从 context 访问
-                         // 根据需要添加其他少量通用参数，但避免角色/上下文特定的
-                     };
-                     // 确保 headers 中有 Content-Type: application/json
-                     headers['Content-Type'] = 'application/json';
-                    break;
-                case 'openai': // Chat Completion APIs
-                    // 对于 OpenAI Chat Completion，端点通常是固定的 /api/openai/chat/completions
-                    endpoint = '/api/openai/chat/completions';
-                    // Chat Completion API 期望 messages 数组
-                    requestBody = {
-                        messages: [{ role: "user", content: prompt }],
-                        // 使用 SillyTavern 的 OpenAI 配置参数 (从 context 获取)
-                        max_tokens: context.chatCompletionSettings?.openai_max_tokens || 500, // <--- 从 context 访问
-                        temperature: context.chatCompletionSettings?.openai_temperature,     // <--- 从 context 访问
-                        top_p: context.chatCompletionSettings?.openai_top_p,             // <--- 从 context 访问
-                         // 如果需要指定模型，可以在这里添加，但通常由后端处理
-                         // model: context.getChatCompletionModel(),
-                    };
-                    // 确保 headers 中有 Content-Type: application/json
-                    headers['Content-Type'] = 'application/json';
-                    break;
-                default:
-                    // 如果是其他未适配的API类型
-                    apiError = `SillyTavern 当前配置的 API (${mainApi}) 不支持通过此插件模式直接发送原始提示。`;
-                    throw new Error(apiError); // 抛出错误以进入catch块
-            }
+                 // No other parameters like overrides, injects, max_chat_history are needed
+                 // as we want a pure raw prompt without ST's usual context building.
+            };
 
-             // 发送请求
-            console.log(`${extensionName}: Sending request to ${endpoint} with body:`, requestBody);
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: headers, // 使用 SillyTavern 的通用头部 (包含 CSRF token 和 Content-Type)
-                body: JSON.stringify(requestBody), // 发送构建好的请求体
-                // signal: context.abortController?.signal, // 允许通过 ST 的停止按钮取消 - 直接 fetch 可能无法关联到 ST 的 AbortController，这可能需要 ST 后端支持
-                // 注意：直接 fetch 可能无法像 sendOpenAIRequest 那样自动关联 ST 的停止按钮。
-                // 如果需要此功能，可能需要手动获取并传递 AbortSignal
-            });
-
-            if (!response.ok) {
-                // 处理非2xx响应状态码 (例如 404, 500)
-                let errorBody;
-                try {
-                    // 尝试解析JSON错误体，但要小心非JSON响应
-                    errorBody = await response.json();
-                } catch (e) {
-                     console.warn(`${extensionName}: Failed to parse error response as JSON:`, e);
-                    // 如果不是JSON响应，创建一个包含状态文本的简单对象
-                    errorBody = { message: response.statusText || `HTTP Error ${response.status}` };
-                }
-                apiError = `API 返回错误 ${response.status}: ${errorBody.message || JSON.stringify(errorBody)}`;
-                throw new Error(apiError); // 抛出错误以进入catch块
-            }
-
-            // 处理成功响应 (2xx状态码)
-            responseData = await response.json(); // 获取响应数据
-
-            // 使用 context.extractMessageFromData 提取文本，传入实际API类型以确保正确解析
-            // extractMessageFromData 期望原始的响应体对象作为第一个参数
-            generatedText = context.extractMessageFromData(responseData, mainApi);
-
+            generatedText = await TavernHelper.generateRaw(generateConfig);
+            // ====================================================================
+            // *** 核心修改部分结束 ***
+            // ====================================================================
 
             if (!generatedText) {
-                apiError = `API (${mainApi}) 调用成功但未提取到文本内容。`;
-                console.warn(`${extensionName}: API response did not contain extractable message. Response data:`, responseData);
-                // 即使未提取到文本，也不抛出错误，在 finally 块显示结果
+                 // generateRaw might return empty string in some cases (e.g., API returns empty)
+                 // This is different from an error being thrown.
+                 console.warn(`${extensionName}: generateRaw completed but returned empty text.`);
+                 responseOutput.text("生成完成，但未返回任何文本。");
+            } else {
+                // Use ST's formatting function for the output before displaying
+                // Pass appropriate arguments for messageFormatting
+                // The message_id argument is often ignored for raw text formatting, so -1 is fine.
+                const formattedText = context.messageFormatting(generatedText, "AI", false, false, -1, {}, false);
+                responseOutput.html(formattedText);
             }
 
 
         } else if (pluginSettings.apiMode === "custom_third_party") {
-            // 保留原有的使用 TextCompletionService 的逻辑
-            // 注意：这个分支仍然假设你的自定义API兼容 TextCompletionService
-            // 如果不兼容，你可能需要在这里也直接使用 fetch 并完全控制请求体和端点
-            const customApiUrl = pluginSettings.customApiUrl;
-            const customApiKey = pluginSettings.customApiKey; // 注意：不建议在前端明文保存密钥
+            // ====================================================================
+            // *** custom_third_party 模式下的逻辑保持不变 ***
+            // TavernHelper.generateRaw 不能直接指定 API URL/Key，所以自定义模式需要自己处理
+            // 您原有的逻辑似乎是使用 TextCompletionService，这里保持。
+            // ====================================================================
+             const customApiUrl = pluginSettings.customApiUrl;
+             const customApiKey = pluginSettings.customApiKey;
 
-            if (!customApiUrl) {
-                apiError = "请先配置自定义API URL。";
-                throw new Error(apiError);
-            } else {
-                console.log(`${extensionName}: Using custom third-party API: ${customApiUrl} (via TextCompletionService).`);
-                // TextCompletionService.generate 内部会构建请求体并调用 fetch
-                // 它的参数结构可能与上面直接 fetch 不同，但它声称支持 "generic" 类型
-                const requestOptions = {
-                    api_server: customApiUrl,
-                    ...(customApiKey && { api_key: customApiKey }),
-                    prompt: prompt, // 发送用户提示
-                    // 示例：使用ST配置的最大生成长度以及 power_user 设置
-                    max_length: context.amountGen,
-                    temperature: context.power_user?.temperature, // <--- 从 context 访问
-                    top_p: context.power_user?.top_p,             // <--- 从 context 访问
-                    // ... 其他你希望传递的参数
-                };
+             if (!customApiUrl) {
+                throw new Error("请先配置自定义API URL。"); // Throw to be caught by the surrounding try...catch
+             } else {
+                 console.log(`${extensionName}: Using custom third-party API: ${customApiUrl} (via TextCompletionService).`);
 
-                    try {
-                        // TextCompletionService.generate 期望 prompt 和 options
-                         responseData = await context.TextCompletionService.generate(
-                            prompt,
-                            requestOptions, // options 用于配置 api_server, api_key 等
-                            // context.abortController?.signal // 同上，直接 fetch 可能无法关联
-                         );
+                 // Assuming TextCompletionService.generate works for the custom API
+                 // and sends the prompt as provided.
+                 // If not, you would replace this with a custom fetch call
+                 // manually building the request body expected by your specific custom API.
+                 // Note: TextCompletionService.generate is also an abstraction over fetch,
+                 // but its request body format depends on its internal logic for 'generic' type.
+                 let responseData = null;
+                 try {
+                    responseData = await context.TextCompletionService.generate(
+                        prompt, // Sending the raw prompt
+                        {
+                            api_server: customApiUrl,
+                            ...(customApiKey && { api_key: customApiKey }), // Pass key if exists
+                            prompt: prompt, // Send the raw prompt again? (Depending on TextCompletionService implementation for 'generic')
+                            // You might need to add other parameters required by your custom API here,
+                            // based on what TextCompletionService's 'generic' type supports or if you switch to direct fetch.
+                            // Example: max_length: context.amountGen,
+                        },
+                        context.abortController?.signal // Allow cancellation via ST stop button
+                    );
 
-                         // TextCompletionService 返回的 responseData 结构依赖于其内部实现
-                         if (typeof responseData === 'string') {
-                             generatedText = responseData; // TextCompletionService 可能直接返回文本
-                         } else {
-                              // 否则，尝试从响应数据中提取
-                              // 对于自定义第三方API，通常假设是 generic 类型
-                             generatedText = context.extractMessageFromData(responseData, 'generic');
-                         }
+                     if (typeof responseData === 'string') {
+                         generatedText = responseData; // TextCompletionService might return text directly
+                     } else if (responseData) {
+                          // Otherwise, try to extract message assuming a 'generic' response structure
+                         generatedText = context.extractMessageFromData(responseData, 'generic');
+                     } else {
+                         // Handle case where TextCompletionService returns null/undefined or empty object
+                         console.warn(`${extensionName}: TextCompletionService.generate completed but returned empty data.`);
+                         generatedText = ""; // Set to empty to trigger the "no text" message below
+                     }
+
+                 } catch (e) {
+                      // Catch errors specific to the TextCompletionService or custom fetch call
+                      throw new Error(`自定义 API 调用失败: ${e.message || e}`); // Re-throw to be caught below
+                 }
 
 
-                         if (!generatedText) {
-                             apiError = "自定义API未返回可识别的文本内容。";
-                             console.error(`${extensionName}: Custom API response did not contain extractable message or was unexpected. Response:`, responseData);
-                         }
-                    } catch (e) {
-                         apiError = `自定义 API 调用失败: ${e.message || e}`;
-                         console.error(`${extensionName}: Custom API fetch failed:`, e);
-                         throw new Error(apiError);
-                    }
-                }
+                 if (!generatedText) {
+                     // Handle empty response from custom API
+                     responseOutput.text("自定义API未返回可识别的文本内容。");
+                     console.error(`${extensionName}: Custom API response did not contain extractable message or was unexpected. Response:`, responseData);
+                 } else {
+                      // Format the output using ST's function
+                      const formattedText = context.messageFormatting(generatedText, "AI", false, false, -1, {}, false);
+                      responseOutput.html(formattedText);
+                 }
             }
-
-            // 显示结果
-            if (generatedText) {
-                // 对于从API返回的文本，使用SillyTavern的格式化函数进行处理
-                // messageFormatting 最后一个参数 (isReasoning) 应该根据需要设置，这里设为 false
-                const formattedText = context.messageFormatting(generatedText, "AI", false, false, -1, {}, false);
-                responseOutput.html(formattedText);
-            } else {
-                 // 如果没有提取到文本，显示错误信息或提示
-                responseOutput.text(apiError || "生成成功，但未提取到文本内容。");
-            }
-
-
-        } catch (error) {
-            // 捕获并显示错误
-            console.error(`${extensionName}: Generation failed:`, error);
-            let errorMessage = "生成失败。";
-            // 优先使用抛出的 error 对象的 message 属性
-            if (error.message) {
-                 errorMessage = `生成失败: ${error.message}`;
-            } else if (typeof error === 'string') {
-                 errorMessage = `生成失败: ${error}`;
-            } else if (apiError) {
-                 errorMessage = `生成失败: ${apiError}`; // 使用在 try 块中构建的 apiError
-            } else if (error instanceof Error) { // 捕获其他意外错误
-                 errorMessage = `生成失败: ${error.name} - ${error.message}`;
-            } else { // 捕获非 Error 类型的错误
-                 errorMessage = `生成失败: 未知错误 (${JSON.stringify(error)})`;
-            }
-            responseOutput.text(errorMessage);
-            toastr.error(errorMessage, "生成失败");
-        } finally {
-            // 确保按钮恢复可用状态并隐藏加载指示器
-            generateButton.prop('disabled', false);
-            loadingSpinner.hide();
         }
+
+        // If we reached here without throwing, either generateRaw succeeded
+        // or the custom_third_party mode succeeded (even if text was empty).
+        // The generatedText (or lack thereof) has already been processed and displayed
+        // inside the if/else blocks.
+
+    } catch (error) {
+        // Catch any errors thrown during generateRaw or custom API call setup/execution
+        console.error(`${extensionName}: Generation failed:`, error);
+        let errorMessage = "生成失败。"; // Default message
+        if (error instanceof Error) {
+             // Use the error's message if it's an Error object
+             errorMessage = `生成失败: ${error.message}`;
+        } else if (typeof error === 'string') {
+             // If it's a string (less likely but possible)
+             errorMessage = `生成失败: ${error}`;
+        } else {
+             // For other unexpected error types
+             errorMessage = `生成失败: 未知错误 (${JSON.stringify(error)})`;
+        }
+        responseOutput.text(errorMessage); // Display error text
+        toastr.error(errorMessage, "生成失败"); // Show toast notification
+    } finally {
+        // Ensure button is re-enabled and spinner is hidden regardless of success or failure
+        generateButton.prop('disabled', false);
+        loadingSpinner.hide();
+        // Note: generateRaw should internally handle ST's global stop button state and progress indicator.
     }
+}
 
 // DOM加载完成后执行
 jQuery(async () => {
@@ -287,6 +250,10 @@ jQuery(async () => {
         }
         console.log(`${extensionName}: UI injected.`);
 
+        // 引入 debounce 函数（假设您已经引入了 utils.js 或有全局 debounce）
+        // 如果没有，需要在此处定义或从其他地方导入
+        // import { debounce } from '../../../../scripts/utils.js'; // 或者根据实际路径导入
+        // 已经在文件顶部添加了导入
 
         await loadPluginSettings(); // 加载并应用保存的设置
 
