@@ -1,0 +1,32 @@
+<!-- public/extensions/third-party/my-ai-tool-plugin/settings_ui.html -->
+<div class="inline-drawer">
+    <div class="inline-drawer-toggle inline-drawer-header">
+        <b>我的AI工具设置与测试</b>
+        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+    </div>
+    <div class="inline-drawer-content" style="padding: 10px;">
+        <p>在此处配置并测试您的第三方AI接口。</p>
+
+        <!-- API 配置区域 -->
+        <div class="flex-container flex-align-center flex-gap-5">
+            <label for="my_ai_tool_api_url" class="inline-label">API URL:</label>
+            <input type="text" id="my_ai_tool_api_url" class="text_pole" placeholder="例如: http://localhost:5000/api/v1/generate">
+        </div>
+        <small>输入第三方API的文本生成接口URL。</small>
+        <hr class="sysHR">
+
+        <!-- 文本生成区域 -->
+        <label for="my_ai_tool_prompt_input">输入文本 (Prompt):</label>
+        <textarea id="my_ai_tool_prompt_input" class="text_pole autoSetHeight" rows="4" placeholder="输入您想让AI生成的内容..."></textarea>
+
+        <button id="my_ai_tool_generate_button" class="menu_button">生成回答</button>
+        <span id="my_ai_tool_loading_spinner" class="fa-solid fa-spinner fa-spin" style="display: none; margin-left: 10px;"></span>
+
+        <label for="my_ai_tool_response_output" style="margin-top: 10px;">AI 回复:</label>
+        <div id="my_ai_tool_response_output" class="text_block">
+            <!-- AI 生成的回复将显示在这里 -->
+            等待生成...
+        </div>
+        <hr class="sysHR">
+    </div>
+</div>
