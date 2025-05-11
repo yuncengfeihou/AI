@@ -3,6 +3,7 @@
 import { getContext } from '../../../../scripts/st-context.js';
 import { renderExtensionTemplateAsync, extension_settings } from '../../../../scripts/extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
+import { debounce } from '../../../../scripts/utils.js'; // <--- 导入 debounce
 import { debounce_timeout } from '../../../../scripts/constants.js'; // 导入 debounce_timeout
 
 const extensionName = "AI";
@@ -14,7 +15,7 @@ const defaultSettings = {
 };
 
 let pluginSettings = {};
-let saveSettingsDebouncedLocal; // 用于延迟保存设置
+// let saveSettingsDebouncedLocal; // 延迟函数在第一次调用时创建
 
 async function loadPluginSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
@@ -36,17 +37,16 @@ async function loadPluginSettings() {
     console.log(`${extensionName}: Settings loaded. Mode: ${pluginSettings.apiMode}`);
 }
 
-function savePluginSettings() {
-    // 使用一个延迟函数来避免频繁保存
-    if (!saveSettingsDebouncedLocal) {
-         // 创建一个 debounced 函数，延迟时间使用 SillyTavern 的默认保存延迟
-        saveSettingsDebouncedLocal = debounce((settingsToSave) => {
-             extension_settings[extensionName] = { ...extension_settings[extensionName], ...settingsToSave };
-             saveSettingsDebounced(); // 调用 SillyTavern 的保存设置函数
-             console.log(`${extensionName}: Settings saved (debounced).`);
-        }, debounce_timeout.DEFAULT_SAVE_EDIT_TIMEOUT); // 使用 ST 提供的默认延迟时间
-    }
+// 使用一个全局或外部的 debounce 实例
+// 如果你只在一个地方使用，也可以在第一次调用 savePluginSettings 时初始化
+let saveSettingsDebouncedLocal = debounce((settingsToSave) => {
+    extension_settings[extensionName] = { ...extension_settings[extensionName], ...settingsToSave };
+    saveSettingsDebounced(); // 调用 SillyTavern 的保存设置函数
+    console.log(`${extensionName}: Settings saved (debounced).`);
+}, debounce_timeout.DEFAULT_SAVE_EDIT_TIMEOUT); // 使用 ST 提供的默认延迟时间
 
+
+function savePluginSettings() {
     // 准备要保存的设置对象
     const settingsToSave = {
         apiMode: pluginSettings.apiMode,
@@ -103,28 +103,29 @@ async function handleGenerate() {
                 case 'textgenerationwebui':
                 case 'novel':
                      // Text Completion APIs
-                     endpoint = context.getGenerateUrl(mainApi); // 使用 context.getGenerateUrl 获取端点
+                     // context.getGenerateUrl 适用于 Text Completion
+                     endpoint = context.getGenerateUrl(mainApi);
                      requestBody = {
                          prompt: prompt, // 发送用户输入作为原始提示
-                         // 包含必要的生成参数
+                         // 包含必要的生成参数 (从 context 获取)
                          max_length: context.amountGen, // 使用 SillyTavern 配置的最大生成长度
-                         temperature: power_user.temperature, // 示例：可以包含一些通用设置
-                         top_p: power_user.top_p,
+                         temperature: context.power_user?.temperature, // <--- 从 context 访问
+                         top_p: context.power_user?.top_p,             // <--- 从 context 访问
                          // 根据需要添加其他少量通用参数，但避免角色/上下文特定的
                      };
                      // 确保 headers 中有 Content-Type: application/json
                      headers['Content-Type'] = 'application/json';
                     break;
                 case 'openai': // Chat Completion APIs
-                    // 硬编码 OpenAI Chat Completion 端点
+                    // 对于 OpenAI Chat Completion，端点通常是固定的 /api/openai/chat/completions
                     endpoint = '/api/openai/chat/completions';
                     // Chat Completion API 期望 messages 数组
                     requestBody = {
                         messages: [{ role: "user", content: prompt }],
-                        // 使用 SillyTavern 的 OpenAI 配置参数
-                        max_tokens: context.chatCompletionSettings.openai_max_tokens || 500,
-                        temperature: context.chatCompletionSettings.openai_temperature,
-                        top_p: context.chatCompletionSettings.openai_top_p,
+                        // 使用 SillyTavern 的 OpenAI 配置参数 (从 context 获取)
+                        max_tokens: context.chatCompletionSettings?.openai_max_tokens || 500, // <--- 从 context 访问
+                        temperature: context.chatCompletionSettings?.openai_temperature,     // <--- 从 context 访问
+                        top_p: context.chatCompletionSettings?.openai_top_p,             // <--- 从 context 访问
                          // 如果需要指定模型，可以在这里添加，但通常由后端处理
                          // model: context.getChatCompletionModel(),
                     };
@@ -143,7 +144,9 @@ async function handleGenerate() {
                 method: 'POST',
                 headers: headers, // 使用 SillyTavern 的通用头部 (包含 CSRF token 和 Content-Type)
                 body: JSON.stringify(requestBody), // 发送构建好的请求体
-                signal: context.abortController?.signal, // 允许通过 ST 的停止按钮取消
+                // signal: context.abortController?.signal, // 允许通过 ST 的停止按钮取消 - 直接 fetch 可能无法关联到 ST 的 AbortController，这可能需要 ST 后端支持
+                // 注意：直接 fetch 可能无法像 sendOpenAIRequest 那样自动关联 ST 的停止按钮。
+                // 如果需要此功能，可能需要手动获取并传递 AbortSignal
             });
 
             if (!response.ok) {
@@ -194,9 +197,10 @@ async function handleGenerate() {
                     api_server: customApiUrl,
                     ...(customApiKey && { api_key: customApiKey }),
                     prompt: prompt, // 发送用户提示
-                    max_length: context.amountGen, // 示例：使用ST配置的最大生成长度
-                    temperature: power_user.temperature,
-                    top_p: power_user.top_p,
+                    // 示例：使用ST配置的最大生成长度以及 power_user 设置
+                    max_length: context.amountGen,
+                    temperature: context.power_user?.temperature, // <--- 从 context 访问
+                    top_p: context.power_user?.top_p,             // <--- 从 context 访问
                     // ... 其他你希望传递的参数
                 };
 
@@ -205,7 +209,7 @@ async function handleGenerate() {
                          responseData = await context.TextCompletionService.generate(
                             prompt,
                             requestOptions, // options 用于配置 api_server, api_key 等
-                            context.abortController?.signal
+                            // context.abortController?.signal // 同上，直接 fetch 可能无法关联
                          );
 
                          // TextCompletionService 返回的 responseData 结构依赖于其内部实现
@@ -283,9 +287,6 @@ jQuery(async () => {
         }
         console.log(`${extensionName}: UI injected.`);
 
-        // 引入 debounce 函数（假设您已经引入了 utils.js 或有全局 debounce）
-        // 如果没有，需要在此处定义或从其他地方导入
-        // import { debounce } from '../../../../scripts/utils.js'; // 或者根据实际路径导入
 
         await loadPluginSettings(); // 加载并应用保存的设置
 
