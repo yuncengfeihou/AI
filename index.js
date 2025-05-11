@@ -4,7 +4,7 @@ import { getContext } from '../../../../scripts/st-context.js';
 import { renderExtensionTemplateAsync, extension_settings } from '../../../../scripts/extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 
-const extensionName = "my-advanced-ai-caller";
+const extensionName = "AI";
 
 const defaultSettings = {
     apiMode: "st_current_api", // 'st_current_api' 或 'custom_third_party'
